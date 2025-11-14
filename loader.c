@@ -6,6 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <net/if.h>
+
 struct bpf_link *prog_link = NULL;
 
 void cleanup(int sig) {
@@ -20,6 +22,15 @@ int main() {
 	struct bpf_object *obj;
 	struct bpf_program *prog;
 	int err;
+	int ifindex; // network interface index
+	
+	const char* if_name = "wlp0s20f3";
+
+	ifindex = if_nametoindex(if_name);
+	if (ifindex == 0) {
+		fprintf(stderr, "failed to find interface %s: %s\n", if_name, strerror(errno));
+		return 1;
+	}
 
 	// read file
 	obj = bpf_object__open("windows-blocker.bpf.o");
@@ -37,14 +48,15 @@ int main() {
 	}
 
 
-	prog = bpf_object__find_program_by_name(obj, "handle_tp"); // change this to attach point
+	prog = bpf_object__find_program_by_name(obj, "windows_blocker"); // change this to attach point
 	if (!prog) {
 		fprintf(stderr, "Failed to find program\n");
 		bpf_object__close(obj);
 		return 1;
 	}
 
-	prog_link = bpf_program__attach(prog);
+	// prog_link = bpf_program__attach(prog);
+	prog_link = bpf_program__attach_xdp(prog, ifindex);
 	if (!prog_link) {
 		fprintf(stderr, "failed to attach program: %s\n", strerror(errno));
 		bpf_object__close(obj);
